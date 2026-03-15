@@ -15,9 +15,8 @@ import base64
 import json
 import re
 import logging
-from typing import Tuple, Optional
-
 import httpx
+from typing import Tuple, Optional, List
 from models.schemas import ExtractedBill
 
 logger = logging.getLogger(__name__)
@@ -27,27 +26,33 @@ GEMINI_API_URL = (
     "gemini-1.5-flash:generateContent"
 )
 
-EXTRACTION_PROMPT = """\
+def build_extraction_prompt(categories: Optional[List[str]] = None) -> str:
+    category_list = ", ".join(categories) if categories else "Food & Dining, Groceries, Transportation, Utilities, Healthcare, Entertainment, Shopping, Travel, Education, Other"
+    
+    return f"""\
 You are a precise bill/receipt data extraction engine.
 
 Analyze this bill or receipt image and extract ALL information into EXACTLY this JSON schema.
 Return ONLY valid JSON — no markdown fences, no explanation, no code blocks, no prose.
 
 Required JSON schema:
-{
+{{
   "vendor": "string — the business or store name, properly capitalized",
   "date": "string — in ISO8601 format YYYY-MM-DD",
   "items": [
-    {"name": "string — item description", "price": 0.00}
+    {{"name": "string — item description", "price": 0.00, "original_price": 0.00}}
   ],
   "total": 0.00,
-  "category": "string — MUST be exactly one of: Food & Dining, Groceries, Transportation, Utilities, Healthcare, Entertainment, Shopping, Travel, Education, Other"
-}
+  "category": "string — MUST be exactly one of: {category_list}",
+  "original_total": 0.00,
+  "original_currency": "string — e.g. USD, EUR, INR, AED",
+  "exchange_rate": 1.00
+}}
 
 Extraction rules:
 - Extract EVERY individual line item visible on the bill
 - All prices must be positive floating-point numbers with 2 decimal places
-- total = final amount paid (after tax and tip if shown)
+- total and price MUST represent the converted value in Indian Rupees (INR). If the bill is already in INR, original_price = price and exchange_rate = 1.0. If the bill is in a foreign currency, estimate the exchange_rate to INR, and calculate the INR total as original_total * exchange_rate.
 - If date is unclear or missing, use today's date as YYYY-MM-DD
 - If vendor name is unclear, use the most prominent text on the bill
 - category must match one of the listed options EXACTLY (case-sensitive)
@@ -70,7 +75,7 @@ class GeminiService:
         return self._client
 
     async def extract_bill(
-        self, file_bytes: bytes, mime_type: str
+        self, file_bytes: bytes, mime_type: str, categories: Optional[List[str]] = None
     ) -> Tuple[Optional[ExtractedBill], Optional[str]]:
         """
         Send image/PDF bytes to Gemini and return a validated ExtractedBill.
@@ -82,7 +87,7 @@ class GeminiService:
             "contents": [
                 {
                     "parts": [
-                        {"text": EXTRACTION_PROMPT},
+                        {"text": build_extraction_prompt(categories)},
                         {
                             "inline_data": {
                                 "mime_type": mime_type,
@@ -249,7 +254,7 @@ class MockGeminiService:
     _idx: int = 0
 
     async def extract_bill(
-        self, file_bytes: bytes, mime_type: str
+        self, file_bytes: bytes, mime_type: str, categories: Optional[List[str]] = None
     ) -> Tuple[Optional[ExtractedBill], Optional[str]]:
         await asyncio.sleep(1.8)  # Simulate Gemini processing latency
         bill_data = self._MOCK_BILLS[MockGeminiService._idx % len(self._MOCK_BILLS)]

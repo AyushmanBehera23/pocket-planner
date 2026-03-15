@@ -19,27 +19,74 @@ import {
 } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// THEME
+// THEME & DESIGN SYSTEM
 // ─────────────────────────────────────────────────────────────────────────────
-const T = {
-  bg0:     "#03070f",   // deepest background
-  bg1:     "#080e1a",   // page background
-  bg2:     "#0d1526",   // card background
-  bg3:     "#111d35",   // elevated card
-  border:  "#1a2744",   // default border
-  border2: "#243358",   // hover border
-  text0:   "#eef2ff",   // primary text
-  text1:   "#8ba3cc",   // secondary text
-  text2:   "#4a6080",   // muted text
-  text3:   "#2a3d58",   // very muted
-  accent:  "#3b82f6",   // blue accent
-  accentG: "#10b981",   // green
-  accentP: "#8b5cf6",   // purple
-  accentO: "#f59e0b",   // amber
-  accentR: "#ef4444",   // red
+const darkTheme = {
+  bg0:     "#03070f",
+  bg1:     "#080e1a",
+  bg2:     "#0d1526",
+  bg3:     "#111d35",
+  border:  "#1a2744",
+  border2: "#243358",
+  text0:   "#eef2ff",
+  text1:   "#8ba3cc",
+  text2:   "#4a6080",
+  text3:   "#2a3d58",
+  accent:  "#3b82f6",
+  accentG: "#10b981",
+  accentP: "#8b5cf6",
+  accentO: "#f59e0b",
+  accentR: "#ef4444",
   mono:    "'JetBrains Mono', 'Fira Code', monospace",
   sans:    "'Inter', 'Segoe UI', system-ui, sans-serif",
+  isDark:  true,
 };
+
+const lightTheme = {
+  bg0:     "#f8fafc",
+  bg1:     "#f1f5f9",
+  bg2:     "#ffffff",
+  bg3:     "#e2e8f0",
+  border:  "#cbd5e1",
+  border2: "#94a3b8",
+  text0:   "#0f172a",
+  text1:   "#334155",
+  text2:   "#64748b",
+  text3:   "#94a3b8",
+  accent:  "#2563eb",
+  accentG: "#059669",
+  accentP: "#7c3aed",
+  accentO: "#d97706",
+  accentR: "#dc2626",
+  mono:    "'JetBrains Mono', 'Fira Code', monospace",
+  sans:    "'Inter', 'Segoe UI', system-ui, sans-serif",
+  isDark:  false,
+};
+
+const ThemeCtx = createContext(null);
+const useTheme = () => useContext(ThemeCtx);
+
+function ThemeProvider({ children }) {
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem("pp_theme");
+    return saved ? saved === "dark" : true;
+  });
+
+  const toggleTheme = () => {
+    setIsDark(d => {
+      localStorage.setItem("pp_theme", !d ? "dark" : "light");
+      return !d;
+    });
+  };
+
+  const T = isDark ? darkTheme : lightTheme;
+
+  return (
+    <ThemeCtx.Provider value={{ T, isDark, toggleTheme }}>
+      {children}
+    </ThemeCtx.Provider>
+  );
+}
 
 const CATEGORY_PALETTE = {
   "Groceries":      "#10b981",
@@ -130,6 +177,24 @@ function AppProvider({ children }) {
   const [state, dispatch] = useReducer(expenseReducer, {
     expenses: [], summary: null, loading: true, error: null,
   });
+  const [categories, setCategories] = useState(() => {
+    const saved = localStorage.getItem("pp_categories");
+    return saved ? JSON.parse(saved) : ["Food & Dining", "Groceries", "Transportation", "Utilities", "Healthcare", "Entertainment", "Shopping", "Travel", "Education", "Other"];
+  });
+  const [budget, setBudget] = useState(() => {
+    const saved = localStorage.getItem("pp_budget");
+    return saved ? parseInt(saved, 10) : 50000;
+  });
+
+  const saveCategories = (newCats) => {
+    setCategories(newCats);
+    localStorage.setItem("pp_categories", JSON.stringify(newCats));
+  };
+  
+  const saveBudget = (newBudget) => {
+    setBudget(newBudget);
+    localStorage.setItem("pp_budget", newBudget.toString());
+  };
 
   const refresh = useCallback(async () => {
     dispatch({ type: "SET_LOADING", payload: true });
@@ -159,7 +224,7 @@ function AppProvider({ children }) {
   }, [refresh]);
 
   return (
-    <Ctx.Provider value={{ ...state, refresh, addExpense, removeExpense }}>
+    <Ctx.Provider value={{ ...state, refresh, addExpense, removeExpense, categories, saveCategories, budget, saveBudget }}>
       {children}
     </Ctx.Provider>
   );
@@ -169,6 +234,7 @@ function AppProvider({ children }) {
 // PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
 function Card({ children, style, onClick, hover = false }) {
+  const { T } = useTheme();
   const [hov, setHov] = useState(false);
   return (
     <div
@@ -189,6 +255,7 @@ function Card({ children, style, onClick, hover = false }) {
 }
 
 function Label({ children, style }) {
+  const { T } = useTheme();
   return (
     <div style={{ color: T.text2, fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", ...style }}>
       {children}
@@ -211,12 +278,14 @@ function Badge({ label, color }) {
   );
 }
 
-function Spinner({ size = 22, color = T.accent }) {
+function Spinner({ size = 22, color }) {
+  const { T } = useTheme();
+  const c = color || T.accent;
   return (
     <div style={{
       width: size, height: size,
-      border: `2px solid ${color}25`,
-      borderTop: `2px solid ${color}`,
+      border: `2px solid ${c}25`,
+      borderTop: `2px solid ${c}`,
       borderRadius: "50%",
       animation: "pp-spin 0.7s linear infinite",
       display: "inline-block",
@@ -226,6 +295,7 @@ function Spinner({ size = 22, color = T.accent }) {
 }
 
 function Mono({ children, style }) {
+  const { T } = useTheme();
   return <span style={{ fontFamily: T.mono, ...style }}>{children}</span>;
 }
 
@@ -233,6 +303,7 @@ function Mono({ children, style }) {
 // HEADER
 // ─────────────────────────────────────────────────────────────────────────────
 function Header({ activeTab, setTab }) {
+  const { T, isDark, toggleTheme } = useTheme();
   const now = new Date();
   const tabs = [
     { id: "dashboard", icon: "◈", label: "Dashboard" },
@@ -293,7 +364,18 @@ function Header({ activeTab, setTab }) {
 
         {/* Status */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, paddingLeft: 16 }}>
-          <div style={{ textAlign: "right" }}>
+          <button 
+            onClick={toggleTheme}
+            style={{ 
+              background: T.bg3, border: `1px solid ${T.border}`, borderRadius: "50%",
+              width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", color: T.text0, fontSize: 16, transition: "background 0.2s"
+            }}
+          >
+            {isDark ? "☀️" : "🌙"}
+          </button>
+          
+          <div style={{ textAlign: "right", marginLeft: 8 }}>
             <div style={{ color: T.text2, fontSize: 10, fontFamily: T.mono }}>
               {now.toLocaleString("default", { month: "short", year: "numeric" }).toUpperCase()}
             </div>
@@ -315,6 +397,7 @@ function Header({ activeTab, setTab }) {
 // STAT CARD
 // ─────────────────────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, accent, icon, loading }) {
+  const { T } = useTheme();
   return (
     <Card style={{ padding: "22px 24px", flex: 1, minWidth: 160, position: "relative", overflow: "hidden" }}>
       {/* Glow */}
@@ -344,6 +427,7 @@ function StatCard({ label, value, sub, accent, icon, loading }) {
 // CATEGORY BREAKDOWN
 // ─────────────────────────────────────────────────────────────────────────────
 function CategoryBreakdown({ summary, loading }) {
+  const { T } = useTheme();
   if (loading) return (
     <Card style={{ padding: "22px 24px" }}>
       <Label style={{ marginBottom: 16 }}>Spending by Category</Label>
@@ -368,7 +452,7 @@ function CategoryBreakdown({ summary, loading }) {
         {cats.map(([cat, amt]) => (
           <div
             key={cat}
-            title={`${cat}: $${amt.toFixed(2)}`}
+            title={`${cat}: ₹${amt.toFixed(2)}`}
             style={{
               width: `${(amt / total) * 100}%`,
               background: catColor(cat),
@@ -392,7 +476,7 @@ function CategoryBreakdown({ summary, loading }) {
               </div>
               <div style={{ color: T.text2, fontSize: 10, fontFamily: T.mono, width: 28, textAlign: "right" }}>{pct}%</div>
               <Mono style={{ color: T.text0, fontSize: 12, fontWeight: 700, width: 68, textAlign: "right" }}>
-                ${amt.toFixed(2)}
+                ₹{amt.toFixed(2)}
               </Mono>
             </div>
           );
@@ -403,9 +487,140 @@ function CategoryBreakdown({ summary, loading }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CUSTOM CATEGORIES MANAGER
+// ─────────────────────────────────────────────────────────────────────────────
+function CustomCategories() {
+  const { T } = useTheme();
+  const { categories, saveCategories } = useApp();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+
+  const handleEdit = () => {
+    setText(categories.join(", "));
+    setEditing(true);
+  };
+  
+  const handleSave = () => {
+    const parsed = text.split(",").map(c => c.trim()).filter(c => c.length > 0);
+    if (parsed.length > 0) {
+      saveCategories(parsed);
+    }
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <Card style={{ padding: "22px 24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+          <Label>My AI Categories</Label>
+          <button onClick={handleEdit} style={{ background: "transparent", border: "none", color: T.accent, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>EDIT</button>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {categories.map(c => (
+            <Badge key={c} label={c} color={catColor(c)} />
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ padding: "22px 24px" }}>
+      <Label style={{ marginBottom: 12 }}>Edit Categories</Label>
+      <div style={{ color: T.text2, fontSize: 11, marginBottom: 10 }}>Comma separated list:</div>
+      <textarea 
+        value={text} 
+        onChange={e => setText(e.target.value)} 
+        style={{ width: "100%", height: 60, background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 6, color: T.text0, padding: 8, fontSize: 12, resize: "none", outline: "none", fontFamily: T.sans }} 
+      />
+      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+        <button onClick={handleSave} style={{ background: T.accent, color: "#fff", border: "none", padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+        <button onClick={() => setEditing(false)} style={{ background: "transparent", color: T.text2, border: "none", padding: "6px 14px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+      </div>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUDGET TRACKER
+// ─────────────────────────────────────────────────────────────────────────────
+function BudgetProgress({ total, loading }) {
+  const { T } = useTheme();
+  const { budget, saveBudget } = useApp();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(budget.toString());
+
+  const pct = Math.min(((total / budget) * 100), 100);
+  const isOver = total > budget;
+  
+  const barColor = isOver ? T.accentR : (pct > 80 ? T.accentO : T.accentG);
+
+  const handleSave = () => {
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      saveBudget(parsed);
+    }
+    setEditing(false);
+  };
+
+  return (
+    <Card style={{ padding: "22px 24px", flex: 2, minWidth: 280 }}>
+      {editing ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Label>Set Monthly Budget (₹)</Label>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input 
+              type="number" 
+              value={val} 
+              onChange={e => setVal(e.target.value)} 
+              style={{ flex: 1, background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 6, color: T.text0, padding: 8, fontSize: 13, outline: "none", fontFamily: T.mono }} 
+            />
+            <button onClick={handleSave} style={{ background: T.accent, color: "#fff", border: "none", padding: "0 14px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+            <button onClick={() => setEditing(false)} style={{ background: "transparent", color: T.text2, border: "none", padding: "0 14px", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
+            <div>
+              <Label style={{ marginBottom: 4 }}>Monthly Budget</Label>
+              {loading ? (
+                <div style={{ height: 24, width: 100, background: T.bg3, borderRadius: 4 }} />
+              ) : (
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                  <span style={{ color: isOver ? T.accentR : T.text0, fontSize: 24, fontWeight: 800, fontFamily: T.mono, letterSpacing: "-0.02em" }}>₹{total.toFixed(0)}</span>
+                  <span style={{ color: T.text2, fontSize: 13, fontFamily: T.mono }}>/ ₹{budget.toFixed(0)}</span>
+                </div>
+              )}
+            </div>
+            <button onClick={() => { setVal(budget.toString()); setEditing(true); }} style={{ background: "transparent", border: "none", color: T.accent, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>EDIT</button>
+          </div>
+          
+          <div style={{ height: 8, background: T.bg3, borderRadius: 4, overflow: "hidden", position: "relative" }}>
+            <div style={{ 
+              position: "absolute", left: 0, top: 0, bottom: 0, 
+              width: `${pct}%`, background: barColor, borderRadius: 4,
+              transition: "all 0.4s cubic-bezier(0.4,0,0.2,1)",
+              boxShadow: `0 0 10px ${barColor}50`
+            }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+            <span style={{ color: T.text2, fontSize: 11 }}>{pct.toFixed(0)}% used</span>
+            <span style={{ color: isOver ? T.accentR : T.text1, fontSize: 11, fontWeight: 600 }}>
+              {isOver ? `Over by ₹${(total - budget).toFixed(0)}` : `₹${(budget - total).toFixed(0)} left`}
+            </span>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // RECENT TRANSACTIONS FEED
 // ─────────────────────────────────────────────────────────────────────────────
 function RecentFeed({ expenses, loading }) {
+  const { T } = useTheme();
   const recent = expenses.slice(0, 6);
   return (
     <Card style={{ padding: "22px 24px" }}>
@@ -442,7 +657,7 @@ function RecentFeed({ expenses, loading }) {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <Mono style={{ color: T.text0, fontSize: 13, fontWeight: 700 }}>${e.bill.total.toFixed(2)}</Mono>
+              <Mono style={{ color: T.text0, fontSize: 13, fontWeight: 700 }}>₹{e.bill.total.toFixed(2)}</Mono>
               <div style={{ marginTop: 3 }}>
                 <Badge label={e.bill.category} color={catColor(e.bill.category)} />
               </div>
@@ -467,6 +682,7 @@ function categoryIcon(cat) {
 // DASHBOARD VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 function Dashboard() {
+  const { T } = useTheme();
   const { expenses, summary, loading } = useApp();
   const total = summary?.grand_total || 0;
   const count = summary?.total_bills || 0;
@@ -477,15 +693,22 @@ function Dashboard() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20, animation: "pp-fade 0.3s ease" }}>
       {/* KPI row */}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <StatCard label="Total Spend"    value={`$${total.toFixed(2)}`} sub="This period"       icon="💸" accent={T.accent}  loading={loading} />
+        <StatCard label="Total Spend"    value={`₹${total.toFixed(2)}`} sub="This period"       icon="💸" accent={T.accent}  loading={loading} />
+        <BudgetProgress total={total} loading={loading} />
+      </div>
+      
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <StatCard label="Bills Tracked"  value={count}                  sub="Documents scanned" icon="🧾" accent={T.accentP} loading={loading} />
-        <StatCard label="Top Category"   value={topCat?.[0] || "—"}     sub={topCat ? `$${topCat[1].toFixed(2)}` : "no data"} icon="📊" accent={T.accentO} loading={loading} />
-        <StatCard label="Avg per Bill"   value={`$${avg.toFixed(2)}`}   sub="Per transaction"  icon="📐" accent={T.accentG} loading={loading} />
+        <StatCard label="Top Category"   value={topCat?.[0] || "—"}     sub={topCat ? `₹${topCat[1].toFixed(2)}` : "no data"} icon="📊" accent={T.accentO} loading={loading} />
+        <StatCard label="Avg per Bill"   value={`₹${avg.toFixed(2)}`}   sub="Per transaction"  icon="📐" accent={T.accentG} loading={loading} />
       </div>
 
-      {/* Charts + Feed */}
+      {/* Charts + Feed + Categories */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <CategoryBreakdown summary={summary} loading={loading} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <CategoryBreakdown summary={summary} loading={loading} />
+          <CustomCategories />
+        </div>
         <RecentFeed expenses={expenses} loading={loading} />
       </div>
 
@@ -511,6 +734,7 @@ function Dashboard() {
 // EXTRACTION RESULT PANEL
 // ─────────────────────────────────────────────────────────────────────────────
 function ExtractionResult({ record, onClear }) {
+  const { T } = useTheme();
   const b = record.bill;
   return (
     <div style={{
@@ -534,7 +758,7 @@ function ExtractionResult({ record, onClear }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
         {[
           { label: "Vendor",   value: b.vendor, color: T.text0, bold: true },
-          { label: "Total",    value: `$${b.total.toFixed(2)}`, color: T.accentG, bold: true, mono: true },
+          { label: "Total",    value: `₹${b.total.toFixed(2)}` + (b.original_currency ? ` (${b.original_currency} ${b.original_total?.toFixed(2)})` : ""), color: T.accentG, bold: true, mono: true },
           { label: "Date",     value: b.date, color: T.text1, mono: true },
           { label: "Items",    value: `${b.items.length} line items`, color: T.text1 },
         ].map(({ label, value, color, bold, mono }) => (
@@ -562,12 +786,17 @@ function ExtractionResult({ record, onClear }) {
             borderBottom: i < b.items.length - 1 ? `1px solid ${T.border}` : "none",
           }}>
             <span style={{ color: T.text1, fontSize: 12 }}>{item.name}</span>
-            <Mono style={{ color: T.text2, fontSize: 12 }}>${item.price.toFixed(2)}</Mono>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {b.original_currency && item.original_price && (
+                <Mono style={{ color: T.text3, fontSize: 10 }}>{b.original_currency} {item.original_price.toFixed(2)}</Mono>
+              )}
+              <Mono style={{ color: T.text2, fontSize: 12 }}>₹{item.price.toFixed(2)}</Mono>
+            </div>
           </div>
         ))}
         <div style={{ padding: "8px 12px", display: "flex", justifyContent: "space-between", borderTop: `1px solid ${T.border}`, background: T.bg2 }}>
           <span style={{ color: T.text2, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Total</span>
-          <Mono style={{ color: T.accentG, fontSize: 13, fontWeight: 800 }}>${b.total.toFixed(2)}</Mono>
+          <Mono style={{ color: T.accentG, fontSize: 13, fontWeight: 800 }}>₹{b.total.toFixed(2)}</Mono>
         </div>
       </div>
     </div>
@@ -577,7 +806,8 @@ function ExtractionResult({ record, onClear }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // BILL DROPZONE
 // ─────────────────────────────────────────────────────────────────────────────
-function BillDropzone({ onExtracted }) {
+function BillDropzone({ onExtracted, categories }) {
+  const { T } = useTheme();
   const [drag, setDrag] = useState(false);
   const [status, setStatus] = useState("idle"); // idle | uploading | success | error
   const [error, setError] = useState(null);
@@ -605,7 +835,20 @@ function BillDropzone({ onExtracted }) {
     setResult(null);
 
     try {
-      const res = await api.extractBill(file);
+      // Modify extract API call to use FormData so we can pass our custom categories list
+      const fd = new FormData();
+      fd.append("file", file);
+      if (categories && categories.length > 0) {
+        fd.append("categories", categories.join(","));
+      }
+
+      const r = await fetch(`${API}/extract`, { method: "POST", body: fd });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+        throw new Error(e.detail || `HTTP ${r.status}`);
+      }
+      const res = await r.json();
+
       if (res.success && res.data) {
         setResult(res.data);
         setStatus("success");
@@ -739,7 +982,8 @@ function BillDropzone({ onExtracted }) {
 // UPLOAD VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 function UploadView() {
-  const { addExpense } = useApp();
+  const { T } = useTheme();
+  const { addExpense, categories } = useApp();
   return (
     <div style={{ maxWidth: 600, animation: "pp-fade 0.3s ease" }}>
       <div style={{ marginBottom: 24 }}>
@@ -752,7 +996,7 @@ function UploadView() {
       </div>
 
       <Card style={{ padding: 22, marginBottom: 16 }}>
-        <BillDropzone onExtracted={addExpense} />
+        <BillDropzone onExtracted={addExpense} categories={categories} />
       </Card>
 
       {/* How it works */}
@@ -788,13 +1032,16 @@ function UploadView() {
 // EXPENSE TABLE (LEDGER)
 // ─────────────────────────────────────────────────────────────────────────────
 function LedgerView() {
+  const { T } = useTheme();
   const { expenses, loading, removeExpense } = useApp();
   const [search, setSearch]   = useState("");
   const [catFilter, setCat]   = useState("All");
+  const [dateFilter, setDateFilter] = useState("");
   const [sortBy, setSortBy]   = useState("date");
   const [sortDir, setSortDir] = useState("desc");
   const [expanded, setExpand] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [splitting, setSplitting] = useState(null);
 
   const cats = ["All", ...new Set(expenses.map(e => e.bill.category))].sort();
 
@@ -806,7 +1053,8 @@ function LedgerView() {
         e.bill.category.toLowerCase().includes(q) ||
         (e.file_name || "").toLowerCase().includes(q);
       const catMatch = catFilter === "All" || e.bill.category === catFilter;
-      return textMatch && catMatch;
+      const dateMatch = !dateFilter || e.bill.date.startsWith(dateFilter);
+      return textMatch && catMatch && dateMatch;
     })
     .sort((a, b) => {
       const av = sortBy === "total" ? a.bill.total : (a.bill[sortBy] || a.bill.date);
@@ -828,6 +1076,35 @@ function LedgerView() {
     await removeExpense(id);
     setDeleting(null);
     if (expanded === id) setExpand(null);
+  };
+
+  const handleExportCSV = () => {
+    if (filtered.length === 0) return;
+    
+    const headers = ["ID", "Date", "Vendor", "Category", "Amount (INR)", "Original Currency", "Original Amount", "Items"];
+    const rows = filtered.map(e => {
+      const b = e.bill;
+      const itemsStr = b.items.map(i => `${i.name} (${i.price})`).join(" | ").replace(/"/g, '""');
+      return [
+        e.id, 
+        b.date, 
+        `"${b.vendor.replace(/"/g, '""')}"`, 
+        b.category, 
+        b.total.toFixed(2), 
+        b.original_currency || "INR", 
+        (b.original_total || b.total).toFixed(2),
+        `"${itemsStr}"`
+      ].join(",");
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `pocket_planner_export_${dateFilter || 'all'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const COL = "2.2fr 1fr 1.5fr 0.8fr 44px";
@@ -867,6 +1144,16 @@ function LedgerView() {
               width: 200, fontFamily: T.sans,
             }}
           />
+          <input
+            type="month"
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            style={{
+              background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 7,
+              padding: "6px 10px", color: T.text1, fontSize: 12, outline: "none",
+              cursor: "pointer", fontFamily: T.sans,
+            }}
+          />
           <select
             value={catFilter}
             onChange={e => setCat(e.target.value)}
@@ -878,6 +1165,18 @@ function LedgerView() {
           >
             {cats.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          <button
+            onClick={handleExportCSV}
+            disabled={filtered.length === 0}
+            style={{
+              background: T.accentG + "15", color: T.accentG, border: `1px solid ${T.accentG}30`,
+              borderRadius: 7, padding: "6px 12px", fontSize: 12, fontWeight: 700,
+              cursor: filtered.length === 0 ? "not-allowed" : "pointer",
+              opacity: filtered.length === 0 ? 0.5 : 1, transition: "all 0.2s"
+            }}
+          >
+            Export
+          </button>
         </div>
 
         {/* Column headers */}
@@ -940,27 +1239,51 @@ function LedgerView() {
                     {/* Category */}
                     <div><Badge label={expense.bill.category} color={catColor(expense.bill.category)} /></div>
                     {/* Total */}
-                    <Mono style={{ color: T.text0, fontSize: 14, fontWeight: 800 }}>
-                      ${expense.bill.total.toFixed(2)}
-                    </Mono>
-                    {/* Delete */}
-                    <button
-                      onClick={(e) => handleDelete(e, expense.id)}
-                      disabled={isDel}
-                      style={{
-                        background: "transparent", border: `1px solid ${T.border}`,
-                        borderRadius: 6, color: T.text3,
-                        cursor: isDel ? "wait" : "pointer",
-                        width: 28, height: 28,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 14, transition: "all 0.15s",
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.color = T.accentR; e.currentTarget.style.borderColor = T.accentR + "40"; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = T.text3; e.currentTarget.style.borderColor = T.border; }}
-                      title="Delete expense"
-                    >
-                      {isDel ? <Spinner size={12} color={T.accentR} /> : "×"}
-                    </button>
+                    <div>
+                      <Mono style={{ color: T.text0, fontSize: 14, fontWeight: 800 }}>
+                        ₹{expense.bill.total.toFixed(2)}
+                      </Mono>
+                      {expense.bill.original_currency && expense.bill.original_currency !== "INR" && (
+                        <div style={{ color: T.text3, fontSize: 9, fontFamily: T.mono, marginTop: 2 }}>
+                          {expense.bill.original_currency} {expense.bill.original_total?.toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                    {/* Delete / Split */}
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSplitting(expense.id); }}
+                        style={{
+                          background: "transparent", border: `1px solid ${T.border}`,
+                          borderRadius: 6, color: T.text3,
+                          cursor: "pointer", width: 28, height: 28,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 12, transition: "all 0.15s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color = T.accentP; e.currentTarget.style.borderColor = T.accentP + "40"; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = T.text3; e.currentTarget.style.borderColor = T.border; }}
+                        title="Split bill"
+                      >
+                        ➗
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(e, expense.id)}
+                        disabled={isDel}
+                        style={{
+                          background: "transparent", border: `1px solid ${T.border}`,
+                          borderRadius: 6, color: T.text3,
+                          cursor: isDel ? "wait" : "pointer",
+                          width: 28, height: 28,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 14, transition: "all 0.15s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color = T.accentR; e.currentTarget.style.borderColor = T.accentR + "40"; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = T.text3; e.currentTarget.style.borderColor = T.border; }}
+                        title="Delete expense"
+                      >
+                        {isDel ? <Spinner size={12} color={T.accentR} /> : "×"}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Expanded line items */}
@@ -979,7 +1302,12 @@ function LedgerView() {
                             borderBottom: i < expense.bill.items.length - 1 ? `1px solid ${T.border}` : "none",
                           }}>
                             <span style={{ color: T.text1, fontSize: 12 }}>{item.name}</span>
-                            <Mono style={{ color: T.text2, fontSize: 12 }}>${item.price.toFixed(2)}</Mono>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              {expense.bill.original_currency && item.original_price && (
+                                <Mono style={{ color: T.text3, fontSize: 10 }}>{expense.bill.original_currency} {item.original_price.toFixed(2)}</Mono>
+                              )}
+                              <Mono style={{ color: T.text2, fontSize: 12 }}>₹{item.price.toFixed(2)}</Mono>
+                            </div>
                           </div>
                         ))}
                         <div style={{
@@ -989,7 +1317,7 @@ function LedgerView() {
                           borderTop: `1px solid ${T.border}`,
                         }}>
                           <span style={{ color: T.text2, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Total</span>
-                          <Mono style={{ color: T.accentG, fontSize: 14, fontWeight: 800 }}>${expense.bill.total.toFixed(2)}</Mono>
+                          <Mono style={{ color: T.accentG, fontSize: 14, fontWeight: 800 }}>₹{expense.bill.total.toFixed(2)}</Mono>
                         </div>
                       </div>
                     </div>
@@ -1014,12 +1342,20 @@ function LedgerView() {
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <span style={{ color: T.text2, fontSize: 11 }}>Total:</span>
               <Mono style={{ color: T.text0, fontSize: 13, fontWeight: 800 }}>
-                ${filtered.reduce((s, e) => s + e.bill.total, 0).toFixed(2)}
+                ₹{filtered.reduce((s, e) => s + e.bill.total, 0).toFixed(2)}
               </Mono>
             </div>
           </div>
         )}
       </Card>
+      
+      {/* Bill Splitter Modal Portal */}
+      {splitting && (
+        <BillSplitterModal 
+          expense={expenses.find(e => e.id === splitting)} 
+          onClose={() => setSplitting(null)} 
+        />
+      )}
     </div>
   );
 }
@@ -1028,6 +1364,7 @@ function LedgerView() {
 // ROOT APP
 // ─────────────────────────────────────────────────────────────────────────────
 function AppShell() {
+  const { T } = useTheme();
   const [tab, setTab] = useState("dashboard");
 
   const VIEWS = {
@@ -1052,7 +1389,7 @@ function AppShell() {
         input::placeholder { color: ${T.text3}; }
         select option { background: ${T.bg2}; color: ${T.text0}; }
       `}</style>
-
+      
       <Header activeTab={tab} setTab={setTab} />
 
       <main style={{ maxWidth: 1140, margin: "0 auto", padding: "28px 24px 60px" }} key={tab}>
@@ -1064,8 +1401,10 @@ function AppShell() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AppShell />
-    </AppProvider>
+    <ThemeProvider>
+      <AppProvider>
+        <AppShell />
+      </AppProvider>
+    </ThemeProvider>
   );
 }

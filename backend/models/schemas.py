@@ -10,6 +10,7 @@ import re
 
 
 class ExpenseCategory(str, Enum):
+    # Default fallback categories if the user hasn't defined custom ones
     FOOD_DINING = "Food & Dining"
     GROCERIES = "Groceries"
     TRANSPORTATION = "Transportation"
@@ -25,6 +26,7 @@ class ExpenseCategory(str, Enum):
 class LineItem(BaseModel):
     name: str
     price: float
+    original_price: Optional[float] = None
 
     @field_validator("price")
     @classmethod
@@ -48,6 +50,12 @@ class ExtractedBill(BaseModel):
     items: List[LineItem]
     total: float
     category: str
+    
+    # Ex: original_total=10.0, original_currency="USD", exchange_rate=83.5
+    # total and price fields will represent the converted INR value
+    original_total: Optional[float] = None
+    original_currency: Optional[str] = None
+    exchange_rate: Optional[float] = None
 
     @field_validator("date")
     @classmethod
@@ -78,13 +86,8 @@ class ExtractedBill(BaseModel):
     @field_validator("category")
     @classmethod
     def normalize_category(cls, v):
-        valid = [c.value for c in ExpenseCategory]
-        # Fuzzy match
-        v_lower = v.lower()
-        for cat in valid:
-            if v_lower in cat.lower() or cat.lower() in v_lower:
-                return cat
-        return ExpenseCategory.OTHER.value
+        # We now allow dynamic categories. We just format it nicely.
+        return v.strip().title() if v else ExpenseCategory.OTHER.value
 
     @field_validator("vendor")
     @classmethod

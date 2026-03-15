@@ -5,7 +5,7 @@ Accepts image/PDF upload → Gemini Vision → validated JSON → persisted to D
 
 import os
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from models.schemas import ExtractionResponse
 from services.gemini import GeminiService, MockGeminiService
 from services.database import db_service
@@ -38,6 +38,7 @@ def get_gemini_service():
 @router.post("/extract", response_model=ExtractionResponse)
 async def extract_bill(
     file: UploadFile = File(..., description="JPEG, PNG, or PDF bill/receipt"),
+    categories: str = Form(None, description="Comma-separated list of custom categories"),
     gemini=Depends(get_gemini_service),
 ):
     """
@@ -70,8 +71,10 @@ async def extract_bill(
     logger.info(f"Processing: {file.filename!r} | {len(file_bytes):,} bytes | {content_type}")
 
     # ── Gemini extraction ───────────────────────────────────────────────────
+    cat_list = [c.strip() for c in categories.split(",")] if categories else None
+    
     mime_type = ALLOWED_MIME_TYPES[content_type]
-    bill, error = await gemini.extract_bill(file_bytes, mime_type)
+    bill, error = await gemini.extract_bill(file_bytes, mime_type, categories=cat_list)
 
     if error or bill is None:
         logger.error(f"Extraction failed for {file.filename!r}: {error}")
