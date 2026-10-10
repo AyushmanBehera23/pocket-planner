@@ -71,47 +71,223 @@ const CATEGORIES = Object.keys(CATEGORY_PALETTE);
 const catColor = (c) => CATEGORY_PALETTE[c] || "#64748b";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// API SERVICE LAYER  (A-02: reads from env)
+// LOCAL STORAGE & DEMO FALLBACK  (For GitHub Pages / Offline mode)
+// ─────────────────────────────────────────────────────────────────────────────
+const LOCAL_STORAGE_KEY = "pocket_planner_demo_expenses";
+const DEFAULT_DEMO_EXPENSES = [
+  {
+    id: "demo-1",
+    bill: {
+      vendor: "Trader Joe's",
+      date: "2024-01-12",
+      category: "Groceries",
+      total: 18.46,
+      items: [
+        { name: "Mandarin Chicken", price: 4.99 },
+        { name: "Everything Bagels", price: 3.49 },
+        { name: "Cold Brew Coffee", price: 6.99 },
+        { name: "Cheese Crisps", price: 2.99 }
+      ]
+    },
+    created_at: new Date().toISOString(),
+    file_name: "receipt_traderjoes.jpg",
+    file_size: 450000
+  },
+  {
+    id: "demo-2",
+    bill: {
+      vendor: "Uber",
+      date: "2024-01-14",
+      category: "Transportation",
+      total: 39.20,
+      items: [
+        { name: "Trip to Airport", price: 34.20 },
+        { name: "Tip", price: 5.00 }
+      ]
+    },
+    created_at: new Date().toISOString(),
+    file_name: "uber_receipt.pdf",
+    file_size: 120000
+  },
+  {
+    id: "demo-3",
+    bill: {
+      vendor: "Whole Foods Market",
+      date: "2024-02-03",
+      category: "Groceries",
+      total: 21.26,
+      items: [
+        { name: "Organic Almond Milk", price: 4.99 },
+        { name: "Sourdough Loaf", price: 6.29 },
+        { name: "Baby Spinach 5oz", price: 4.49 },
+        { name: "Hass Avocados", price: 5.49 }
+      ]
+    },
+    created_at: new Date().toISOString(),
+    file_name: "wholefoods_feb.png",
+    file_size: 890000
+  }
+];
+
+function getLocalExpenses() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!raw) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(DEFAULT_DEMO_EXPENSES));
+      return DEFAULT_DEMO_EXPENSES;
+    }
+    return JSON.parse(raw);
+  } catch {
+    return DEFAULT_DEMO_EXPENSES;
+  }
+}
+
+function saveLocalExpenses(list) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn("localStorage write failed", e);
+  }
+}
+
+function computeLocalSummary() {
+  const records = getLocalExpenses();
+  const category_totals = {};
+  const monthly_totals = {};
+  records.forEach(r => {
+    const b = r.bill;
+    if (b && b.total) {
+      const cat = b.category || "Other";
+      category_totals[cat] = (category_totals[cat] || 0) + b.total;
+      const mk = b.date ? b.date.slice(0, 7) : "unknown";
+      monthly_totals[mk] = (monthly_totals[mk] || 0) + b.total;
+    }
+  });
+  const grand_total = Object.values(category_totals).reduce((a, c) => a + c, 0);
+  return {
+    category_breakdown: category_totals,
+    monthly_breakdown: monthly_totals,
+    grand_total: Math.round(grand_total * 100) / 100,
+    total_bills: records.length,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API SERVICE LAYER  (A-02: reads from env, falls back gracefully when offline)
 // ─────────────────────────────────────────────────────────────────────────────
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 const api = {
   async extractBill(file) {
-    const fd = new FormData();
-    fd.append("file", file);
-    const r = await fetch(`${API}/extract`, { method: "POST", body: fd });
-    if (!r.ok) {
-      const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-      throw new Error(e.detail || `HTTP ${r.status}`);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`${API}/extract`, { method: "POST", body: fd });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+        throw new Error(e.detail || `HTTP ${r.status}`);
+      }
+      return await r.json();
+    } catch (err) {
+      console.warn("Backend API unavailable, using client-side extraction simulation:", err.message);
+      // Simulated extraction for demo/offline mode
+      const fname = file.name || "receipt.png";
+      const cleanName = fname.split('.')[0].replace(/[-_]/g, ' ');
+      const vendorName = cleanName.length > 2 
+        ? cleanName.charAt(0).toUpperCase() + cleanName.slice(1) 
+        : "Corner Store & Cafe";
+      
+      const simulatedTotal = Math.round((12.50 + (file.size % 45)) * 100) / 100;
+      const newRecord = {
+        id: "rec-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+        bill: {
+          vendor: vendorName,
+          date: new Date().toISOString().split("T")[0],
+          category: CATEGORIES[file.size % CATEGORIES.length] || "Groceries",
+          total: simulatedTotal,
+          items: [
+            { name: "Extracted Item A", price: Math.round((simulatedTotal * 0.6) * 100) / 100 },
+            { name: "Extracted Item B", price: Math.round((simulatedTotal * 0.4) * 100) / 100 }
+          ]
+        },
+        created_at: new Date().toISOString(),
+        file_name: fname,
+        file_size: file.size
+      };
+      
+      const currentList = getLocalExpenses();
+      const updatedList = [newRecord, ...currentList];
+      saveLocalExpenses(updatedList);
+      
+      return {
+        record: newRecord,
+        warning: "Extracted in Demo Mode (Backend Offline)"
+      };
     }
-    return r.json();
   },
   async getExpenses() {
-    const r = await fetch(`${API}/expenses`);
-    if (!r.ok) throw new Error("Failed to fetch expenses");
-    return r.json();
+    try {
+      const r = await fetch(`${API}/expenses`);
+      if (!r.ok) throw new Error("Failed to fetch expenses");
+      return await r.json();
+    } catch {
+      const local = getLocalExpenses();
+      const total = local.reduce((sum, r) => sum + (r.bill?.total || 0), 0);
+      return {
+        expenses: local,
+        total_count: local.length,
+        monthly_total: Math.round(total * 100) / 100
+      };
+    }
   },
   async getSummary() {
-    const r = await fetch(`${API}/expenses/summary`);
-    if (!r.ok) throw new Error("Failed to fetch summary");
-    return r.json();
+    try {
+      const r = await fetch(`${API}/expenses/summary`);
+      if (!r.ok) throw new Error("Failed to fetch summary");
+      return await r.json();
+    } catch {
+      return computeLocalSummary();
+    }
   },
   async deleteExpense(id) {
-    const r = await fetch(`${API}/expenses/${id}`, { method: "DELETE" });
-    if (!r.ok) throw new Error("Delete failed");
-    return r.json();
+    try {
+      const r = await fetch(`${API}/expenses/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error("Delete failed");
+      return await r.json();
+    } catch {
+      const local = getLocalExpenses().filter(e => e.id !== id);
+      saveLocalExpenses(local);
+      return { success: true, deleted_id: id };
+    }
   },
   async updateExpense(id, data) {
-    const r = await fetch(`${API}/expenses/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!r.ok) {
-      const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
-      throw new Error(e.detail || `HTTP ${r.status}`);
+    try {
+      const r = await fetch(`${API}/expenses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
+        throw new Error(e.detail || `HTTP ${r.status}`);
+      }
+      return await r.json();
+    } catch {
+      const local = getLocalExpenses();
+      let updatedRecord = null;
+      const newList = local.map(item => {
+        if (item.id === id) {
+          const b = { ...item.bill, ...data };
+          if (data.items) b.items = data.items;
+          updatedRecord = { ...item, bill: b };
+          return updatedRecord;
+        }
+        return item;
+      });
+      saveLocalExpenses(newList);
+      if (!updatedRecord) throw new Error("Expense not found");
+      return updatedRecord;
     }
-    return r.json();
   },
   async health() {
     const r = await fetch(`${API.replace("/api", "")}/health`);
