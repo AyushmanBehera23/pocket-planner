@@ -1,17 +1,18 @@
 """
 Gemini Vision Service — Async multimodal bill extraction.
 
-Architecture:
-- GeminiService: real Gemini 1.5 Flash API (requires GEMINI_API_KEY)
-- MockGeminiService: realistic demo data, no API key needed
+Fixes:
+  B-06: PDF is now converted to PNG via PyMuPDF before being sent to Gemini,
+        because Gemini's inline_data API does not support PDF natively.
 
-The extraction prompt is engineered for zero-ambiguity JSON output.
-_parse_and_validate() handles OCR noise: markdown fences, trailing commas,
-numeric strings, and fuzzy date formats.
+Architecture:
+  - GeminiService: real Gemini 1.5 Flash API (requires GEMINI_API_KEY)
+  - MockGeminiService: realistic demo data, no API key needed
 """
 
 import asyncio
 import base64
+import io
 import json
 import re
 import logging
@@ -61,6 +62,23 @@ Return ONLY the JSON object. Nothing before it. Nothing after it.\
 """
 
 
+def _pdf_to_png_bytes(pdf_bytes: bytes) -> bytes:
+    """
+    Convert the first page of a PDF to PNG bytes using PyMuPDF (fitz).
+    This lets us pass PDFs to Gemini as image/png (B-06 fix).
+    """
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    if len(doc) == 0:
+        raise ValueError("PDF contains no pages.")
+    page = doc[0]
+    # 200 DPI gives good quality without exceeding Gemini's size limits
+    mat = fitz.Matrix(200 / 72, 200 / 72)
+    pix = page.get_pixmap(matrix=mat)
+    return pix.tobytes("png")
+
+
 class GeminiService:
     """Async Gemini 1.5 Flash multimodal extraction."""
 
@@ -71,7 +89,7 @@ class GeminiService:
     @property
     def client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=45.0)
+            self._client = httpx.AsyncClient(timeout=60.0)
         return self._client
 
     async def extract_bill(
@@ -79,8 +97,18 @@ class GeminiService:
     ) -> Tuple[Optional[ExtractedBill], Optional[str]]:
         """
         Send image/PDF bytes to Gemini and return a validated ExtractedBill.
+        PDFs are first converted to PNG (B-06).
         Returns (bill, None) on success or (None, error_message) on failure.
         """
+        # ── B-06: Convert PDF → PNG ───────────────────────────────────────
+        if mime_type == "application/pdf":
+            try:
+                file_bytes = _pdf_to_png_bytes(file_bytes)
+                mime_type = "image/png"
+                logger.info("PDF converted to PNG for Gemini extraction.")
+            except Exception as e:
+                return None, f"Failed to convert PDF to image: {e}"
+
         b64_data = base64.b64encode(file_bytes).decode("utf-8")
 
         payload = {
@@ -98,7 +126,7 @@ class GeminiService:
                 }
             ],
             "generationConfig": {
-                "temperature": 0.05,   # Near-deterministic for extraction
+                "temperature": 0.05,
                 "topK": 1,
                 "topP": 0.95,
                 "maxOutputTokens": 2048,
@@ -114,7 +142,6 @@ class GeminiService:
             response.raise_for_status()
             result = response.json()
 
-            # Navigate the Gemini response structure
             raw_text = (
                 result.get("candidates", [{}])[0]
                 .get("content", {})
@@ -139,7 +166,7 @@ class GeminiService:
             return None, f"Gemini API error {status}: {e.response.text[:200]}"
 
         except httpx.TimeoutException:
-            return None, "Gemini API timed out (45s). Please try again."
+            return None, "Gemini API timed out (60s). Please try again."
 
         except (KeyError, IndexError, json.JSONDecodeError, ValueError) as e:
             return None, f"Failed to parse Gemini response: {str(e)}"
@@ -151,21 +178,12 @@ class GeminiService:
     def _parse_and_validate(self, raw_text: str) -> ExtractedBill:
         """
         Robustly parse LLM output into a validated ExtractedBill.
-
-        Handles common OCR/LLM noise:
-        - Markdown code fences (```json ... ```)
-        - Trailing commas before } or ]
-        - Numeric values as strings ("12.99" → 12.99)
-        - Extra whitespace and Unicode artifacts
+        Handles markdown fences, trailing commas, numeric strings.
         """
-        # Step 1: Strip markdown fences
         cleaned = re.sub(r"```(?:json)?\s*", "", raw_text, flags=re.IGNORECASE).strip()
         cleaned = re.sub(r"```\s*$", "", cleaned).strip()
-
-        # Step 2: Remove trailing commas (common LLM error)
         cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
 
-        # Step 3: Extract the JSON object
         match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if not match:
             raise ValueError(
@@ -175,13 +193,11 @@ class GeminiService:
 
         json_str = match.group(0)
 
-        # Step 4: Parse
         try:
             data = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise ValueError(f"JSON parse error: {e}. Cleaned text: {json_str[:200]!r}")
 
-        # Step 5: Coerce numeric strings → floats
         if "total" in data and isinstance(data["total"], str):
             data["total"] = float(re.sub(r"[^\d.]", "", data["total"]) or "0")
 
@@ -189,7 +205,6 @@ class GeminiService:
             if isinstance(item.get("price"), str):
                 item["price"] = float(re.sub(r"[^\d.]", "", item["price"]) or "0")
 
-        # Step 6: Pydantic validation (raises on schema violation)
         return ExtractedBill(**data)
 
     async def close(self):
@@ -200,7 +215,7 @@ class GeminiService:
 class MockGeminiService:
     """
     Realistic mock for demo/testing — no API key required.
-    Cycles through a set of pre-built bills with a simulated delay.
+    Cycles through pre-built bills with a simulated delay.
     """
 
     _MOCK_BILLS = [
@@ -249,6 +264,16 @@ class MockGeminiService:
             "total": 30.47,
             "category": "Healthcare",
         },
+        {
+            "vendor": "Amazon",
+            "date": "2025-03-14",
+            "items": [
+                {"name": "USB-C Hub 7-in-1", "price": 29.99},
+                {"name": "Laptop Stand Adjustable", "price": 39.99},
+            ],
+            "total": 69.98,
+            "category": "Shopping",
+        },
     ]
 
     _idx: int = 0
@@ -256,7 +281,7 @@ class MockGeminiService:
     async def extract_bill(
         self, file_bytes: bytes, mime_type: str, categories: Optional[List[str]] = None
     ) -> Tuple[Optional[ExtractedBill], Optional[str]]:
-        await asyncio.sleep(1.8)  # Simulate Gemini processing latency
+        await asyncio.sleep(2.0)  # Simulate Gemini processing latency
         bill_data = self._MOCK_BILLS[MockGeminiService._idx % len(self._MOCK_BILLS)]
         MockGeminiService._idx += 1
         return ExtractedBill(**bill_data), None
