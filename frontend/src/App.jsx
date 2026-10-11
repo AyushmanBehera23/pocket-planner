@@ -173,16 +173,25 @@ function computeLocalSummary() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// API SERVICE LAYER  (A-02: reads from env, falls back gracefully when offline)
+// API SERVICE LAYER  (A-02: reads from env or custom storage, falls back gracefully)
 // ─────────────────────────────────────────────────────────────────────────────
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+const DEFAULT_API = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+
+function getActiveApiUrl() {
+  try {
+    const custom = localStorage.getItem("pocket_planner_custom_api");
+    if (custom && custom.trim()) return custom.trim();
+  } catch {}
+  return DEFAULT_API;
+}
 
 const api = {
   async extractBill(file) {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const r = await fetch(`${API}/extract`, { method: "POST", body: fd });
+      const activeApi = getActiveApiUrl();
+      const r = await fetch(`${activeApi}/extract`, { method: "POST", body: fd });
       if (!r.ok) {
         const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }));
         throw new Error(e.detail || `HTTP ${r.status}`);
@@ -220,6 +229,8 @@ const api = {
       saveLocalExpenses(updatedList);
       
       return {
+        success: true,
+        data: newRecord,
         record: newRecord,
         warning: "Extracted in Demo Mode (Backend Offline)"
       };
@@ -227,7 +238,8 @@ const api = {
   },
   async getExpenses() {
     try {
-      const r = await fetch(`${API}/expenses`);
+      const activeApi = getActiveApiUrl();
+      const r = await fetch(`${activeApi}/expenses`);
       if (!r.ok) throw new Error("Failed to fetch expenses");
       return await r.json();
     } catch {
@@ -242,7 +254,8 @@ const api = {
   },
   async getSummary() {
     try {
-      const r = await fetch(`${API}/expenses/summary`);
+      const activeApi = getActiveApiUrl();
+      const r = await fetch(`${activeApi}/expenses/summary`);
       if (!r.ok) throw new Error("Failed to fetch summary");
       return await r.json();
     } catch {
@@ -251,7 +264,8 @@ const api = {
   },
   async deleteExpense(id) {
     try {
-      const r = await fetch(`${API}/expenses/${id}`, { method: "DELETE" });
+      const activeApi = getActiveApiUrl();
+      const r = await fetch(`${activeApi}/expenses/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error("Delete failed");
       return await r.json();
     } catch {
@@ -262,7 +276,8 @@ const api = {
   },
   async updateExpense(id, data) {
     try {
-      const r = await fetch(`${API}/expenses/${id}`, {
+      const activeApi = getActiveApiUrl();
+      const r = await fetch(`${activeApi}/expenses/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -290,7 +305,9 @@ const api = {
     }
   },
   async health() {
-    const r = await fetch(`${API.replace("/api", "")}/health`);
+    const activeApi = getActiveApiUrl();
+    const healthUrl = activeApi.endsWith("/api") ? `${activeApi.slice(0, -4)}/health` : `${activeApi}/health`;
+    const r = await fetch(healthUrl);
     if (!r.ok) throw new Error("Offline");
     return r.json();
   },
@@ -448,8 +465,19 @@ function AppProvider({ children }) {
     }
   }, [refresh, toast]);
 
+  const checkHealth = useCallback(async () => {
+    try {
+      await api.health();
+      dispatch({ type: "SET_ONLINE", payload: true });
+      return true;
+    } catch {
+      dispatch({ type: "SET_ONLINE", payload: false });
+      return false;
+    }
+  }, []);
+
   return (
-    <Ctx.Provider value={{ ...state, refresh, addExpense, removeExpense, editExpense }}>
+    <Ctx.Provider value={{ ...state, refresh, addExpense, removeExpense, editExpense, checkHealth }}>
       {children}
     </Ctx.Provider>
   );
@@ -662,10 +690,152 @@ function Modal({ open, onClose, children, maxWidth = 560 }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CONNECTION SETTINGS MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function ConnectionSettingsModal({ open, onClose }) {
+  const { online, checkHealth, refresh } = useApp();
+  const toast = useToast();
+  const [customUrl, setCustomUrl] = useState(() => {
+    try { return localStorage.getItem("pocket_planner_custom_api") || ""; } catch { return ""; }
+  });
+  const [testing, setTesting] = useState(false);
+  const isLocalhost = typeof window !== "undefined" && 
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  const handleTestAndSave = async () => {
+    setTesting(true);
+    try {
+      if (customUrl.trim()) {
+        localStorage.setItem("pocket_planner_custom_api", customUrl.trim());
+      } else {
+        localStorage.removeItem("pocket_planner_custom_api");
+      }
+      const ok = await checkHealth();
+      await refresh();
+      if (ok) {
+        toast("Connected to backend successfully!", "success");
+        onClose();
+      } else {
+        toast("Could not reach backend at specified URL. Running in Demo Mode.", "info");
+      }
+    } catch (err) {
+      toast(`Connection test failed: ${err.message}`, "error");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleReset = async () => {
+    try {
+      localStorage.removeItem("pocket_planner_custom_api");
+      setCustomUrl("");
+      await checkHealth();
+      await refresh();
+      toast("Reset to default connection settings.", "info");
+      onClose();
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} maxWidth={520}>
+      <div style={{ padding: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 10, height: 10, borderRadius: "50%",
+              background: online ? T.accentG : isLocalhost ? T.accentR : "#c084fc",
+              boxShadow: `0 0 8px ${online ? T.accentG : isLocalhost ? T.accentR : "#c084fc"}`,
+            }} />
+            <h3 style={{ margin: 0, fontSize: 18, color: T.text0, fontWeight: 700 }}>
+              Backend Connection & Mode
+            </h3>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: T.text2, cursor: "pointer", fontSize: 20 }}>×</button>
+        </div>
+
+        {/* Current status banner */}
+        <div style={{
+          background: online ? T.accentG + "12" : isLocalhost ? T.accentR + "12" : "#a855f715",
+          border: `1px solid ${online ? T.accentG + "30" : isLocalhost ? T.accentR + "30" : "#a855f735"}`,
+          borderRadius: 12, padding: "14px 16px", marginBottom: 20,
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: online ? T.accentG : isLocalhost ? T.accentR : "#c084fc", marginBottom: 4 }}>
+            {online ? "🟢 CONNECTED TO BACKEND API" : isLocalhost ? "🔴 LOCAL BACKEND OFFLINE" : "⚡ STANDALONE / DEMO MODE ACTIVE"}
+          </div>
+          <div style={{ fontSize: 12, color: T.text1, lineHeight: 1.5 }}>
+            {online ? (
+              <span>Your web app is directly connected to Python FastAPI on <code>{getActiveApiUrl()}</code>. Real Gemini Vision extraction and SQLite persistence are active.</span>
+            ) : isLocalhost ? (
+              <span>Local server on port 8000 is not responding. Ensure <code>uvicorn main:app --port 8000</code> is running.</span>
+            ) : (
+              <span>
+                Running live on GitHub Pages. Due to browser security (Mixed Content policies), HTTPS websites cannot reach unencrypted <code>http://localhost:8000</code> directly.
+                <br /><br />
+                All features (receipt parsing, edits, deletions, budget alerts, and analytics) are currently running via <strong>in-browser persistent storage</strong>.
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Custom Backend URL option */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: T.text1, marginBottom: 6 }}>
+            Custom Cloud Backend API URL (Optional)
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. https://my-backend.onrender.com/api"
+            value={customUrl}
+            onChange={e => setCustomUrl(e.target.value)}
+            style={{
+              width: "100%", padding: "10px 14px", borderRadius: 8,
+              background: T.bg1, border: `1px solid ${T.border1}`,
+              color: T.text0, fontSize: 13, fontFamily: T.mono, boxSizing: "border-box"
+            }}
+          />
+          <div style={{ fontSize: 11, color: T.text2, marginTop: 6 }}>
+            If you deployed the Python backend to a public HTTPS host (Render, Railway, Fly.io, or ngrok), enter its URL here.
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          {customUrl && (
+            <button
+              onClick={handleReset}
+              style={{
+                background: "transparent", border: `1px solid ${T.border1}`,
+                color: T.text1, padding: "8px 14px", borderRadius: 8, fontSize: 12, cursor: "pointer"
+              }}
+            >
+              Reset to Default
+            </button>
+          )}
+          <button
+            onClick={handleTestAndSave}
+            disabled={testing}
+            style={{
+              background: T.accentB, color: "#fff", border: "none",
+              padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+              cursor: testing ? "not-allowed" : "pointer", opacity: testing ? 0.7 : 1
+            }}
+          >
+            {testing ? "Testing…" : "Test & Save Connection"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HEADER
 // ─────────────────────────────────────────────────────────────────────────────
 function Header({ activeTab, setTab }) {
   const { online } = useApp();
+  const [showSettings, setShowSettings] = useState(false);
   const now = new Date();
   const tabs = [
     { id: "dashboard", icon: "◈", label: "Dashboard" },
@@ -675,93 +845,136 @@ function Header({ activeTab, setTab }) {
     { id: "budgets",   icon: "⬡", label: "Budgets" },
   ];
 
+  const isLocalhost = typeof window !== "undefined" && 
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  const badgeText = online === null 
+    ? "CONNECTING…" 
+    : online 
+      ? "ONLINE" 
+      : isLocalhost 
+        ? "OFFLINE" 
+        : "⚡ DEMO MODE";
+
+  const badgeColor = online === null 
+    ? T.accentO 
+    : online 
+      ? T.accentG 
+      : isLocalhost 
+        ? T.accentR 
+        : "#c084fc";
+
+  const badgeBg = online === null 
+    ? T.accentO + "15" 
+    : online 
+      ? T.accentG + "15" 
+      : isLocalhost 
+        ? T.accentR + "15" 
+        : "#a855f718";
+
+  const badgeBorder = online === null 
+    ? T.accentO + "30" 
+    : online 
+      ? T.accentG + "30" 
+      : isLocalhost 
+        ? T.accentR + "30" 
+        : "#a855f735";
+
   return (
-    <header style={{
-      background: T.bg2, borderBottom: `1px solid ${T.border}`,
-      position: "sticky", top: 0, zIndex: 100,
-    }}>
-      <div style={{
-        maxWidth: 1200, margin: "0 auto", padding: "0 20px",
-        display: "flex", alignItems: "center", gap: 0,
-        overflowX: "auto",
+    <>
+      <ConnectionSettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <header style={{
+        background: T.bg2, borderBottom: `1px solid ${T.border}`,
+        position: "sticky", top: 0, zIndex: 100,
       }}>
-        {/* Logo */}
         <div style={{
-          display: "flex", alignItems: "center", gap: 10,
-          paddingRight: 24, borderRight: `1px solid ${T.border}`,
-          marginRight: 8, flexShrink: 0,
+          maxWidth: 1200, margin: "0 auto", padding: "0 20px",
+          display: "flex", alignItems: "center", gap: 0,
+          overflowX: "auto",
         }}>
+          {/* Logo */}
           <div style={{
-            width: 34, height: 34,
-            background: `linear-gradient(135deg, ${T.accent}, ${T.accentP})`,
-            borderRadius: 9,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 17, boxShadow: `0 0 16px ${T.accent}30`, flexShrink: 0,
-          }}>💳</div>
-          <div>
-            <div style={{ color: T.text0, fontSize: 15, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>
-              Pocket<span style={{ color: T.accent }}>Planner</span>
-            </div>
-            <div style={{ color: T.text3, fontSize: 9, fontFamily: T.mono, letterSpacing: "0.12em", marginTop: 1 }}>
-              AI EXPENSE TRACKER
+            display: "flex", alignItems: "center", gap: 10,
+            paddingRight: 24, borderRight: `1px solid ${T.border}`,
+            marginRight: 8, flexShrink: 0,
+          }}>
+            <div style={{
+              width: 34, height: 34,
+              background: `linear-gradient(135deg, ${T.accent}, ${T.accentP})`,
+              borderRadius: 9,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 17, boxShadow: `0 0 16px ${T.accent}30`, flexShrink: 0,
+            }}>💳</div>
+            <div>
+              <div style={{ color: T.text0, fontSize: 15, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>
+                Pocket<span style={{ color: T.accent }}>Planner</span>
+              </div>
+              <div style={{ color: T.text3, fontSize: 9, fontFamily: T.mono, letterSpacing: "0.12em", marginTop: 1 }}>
+                AI EXPENSE TRACKER
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Nav Tabs */}
-        <nav style={{ display: "flex", flex: 1, gap: 0, overflowX: "auto" }}>
-          {tabs.map(tab => (
+          {/* Nav Tabs */}
+          <nav style={{ display: "flex", flex: 1, gap: 0, overflowX: "auto" }}>
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setTab(tab.id)}
+                style={{
+                  background: "transparent", border: "none",
+                  borderBottom: `2px solid ${activeTab === tab.id ? T.accent : "transparent"}`,
+                  color: activeTab === tab.id ? T.accent : T.text2,
+                  padding: "18px 16px", cursor: "pointer",
+                  fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+                  transition: "all 0.15s",
+                  display: "flex", alignItems: "center", gap: 5,
+                  whiteSpace: "nowrap", flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: 13, opacity: 0.9 }}>{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Status — B-07 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 12, flexShrink: 0 }}>
+            <div style={{ textAlign: "right", display: "none" }} className="hide-mobile">
+              <div style={{ color: T.text2, fontSize: 10, fontFamily: T.mono }}>
+                {now.toLocaleString("default", { month: "short", year: "numeric" }).toUpperCase()}
+              </div>
+            </div>
             <button
-              key={tab.id}
-              onClick={() => setTab(tab.id)}
+              onClick={() => setShowSettings(true)}
+              title="Click to view Backend Connection settings"
               style={{
-                background: "transparent", border: "none",
-                borderBottom: `2px solid ${activeTab === tab.id ? T.accent : "transparent"}`,
-                color: activeTab === tab.id ? T.accent : T.text2,
-                padding: "18px 16px", cursor: "pointer",
-                fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-                transition: "all 0.15s",
-                display: "flex", alignItems: "center", gap: 5,
-                whiteSpace: "nowrap", flexShrink: 0,
+                display: "flex", alignItems: "center", gap: 6,
+                background: badgeBg,
+                border: `1px solid ${badgeBorder}`,
+                borderRadius: 20, padding: "5px 12px",
+                cursor: "pointer", outline: "none", transition: "all 0.15s ease",
               }}
             >
-              <span style={{ fontSize: 13, opacity: 0.9 }}>{tab.icon}</span>
-              {tab.label}
+              {online === null
+                ? <Spinner size={8} color={T.accentO} />
+                : <div style={{
+                    width: 6, height: 6, borderRadius: "50%",
+                    background: badgeColor,
+                    boxShadow: `0 0 6px ${badgeColor}`,
+                  }} />
+              }
+              <span style={{
+                color: badgeColor,
+                fontSize: 10, fontWeight: 700, fontFamily: T.mono, letterSpacing: "0.02em",
+              }}>
+                {badgeText}
+              </span>
             </button>
-          ))}
-        </nav>
-
-        {/* Status — B-07 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 12, flexShrink: 0 }}>
-          <div style={{ textAlign: "right", display: "none" }} className="hide-mobile">
-            <div style={{ color: T.text2, fontSize: 10, fontFamily: T.mono }}>
-              {now.toLocaleString("default", { month: "short", year: "numeric" }).toUpperCase()}
-            </div>
-          </div>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6,
-            background: online === false ? T.accentR + "15" : T.accentG + "15",
-            border: `1px solid ${online === false ? T.accentR + "30" : T.accentG + "30"}`,
-            borderRadius: 20, padding: "4px 10px",
-          }}>
-            {online === null
-              ? <Spinner size={8} color={T.accentO} />
-              : <div style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: online ? T.accentG : T.accentR,
-                  boxShadow: `0 0 6px ${online ? T.accentG : T.accentR}`,
-                }} />
-            }
-            <span style={{
-              color: online === false ? T.accentR : T.accentG,
-              fontSize: 10, fontWeight: 700, fontFamily: T.mono,
-            }}>
-              {online === null ? "…" : online ? "ONLINE" : "OFFLINE"}
-            </span>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+    </>
   );
 }
 
