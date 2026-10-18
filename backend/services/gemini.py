@@ -14,6 +14,7 @@ import asyncio
 import base64
 import io
 import json
+import os
 import re
 import logging
 import httpx
@@ -22,9 +23,10 @@ from models.schemas import ExtractedBill
 
 logger = logging.getLogger(__name__)
 
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 GEMINI_API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-1.5-flash:generateContent"
+    f"https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{GEMINI_MODEL}:generateContent"
 )
 
 def build_extraction_prompt(categories: Optional[List[str]] = None) -> str:
@@ -129,7 +131,8 @@ class GeminiService:
                 "temperature": 0.05,
                 "topK": 1,
                 "topP": 0.95,
-                "maxOutputTokens": 2048,
+                "maxOutputTokens": 4096,
+                "response_mime_type": "application/json",
             },
         }
 
@@ -150,9 +153,15 @@ class GeminiService:
             )
 
             if not raw_text:
+                logger.error(f"Gemini empty response. Full result: {result}")
                 return None, "Gemini returned an empty response."
 
-            bill = self._parse_and_validate(raw_text)
+            logger.info(f"Gemini raw response (first 500 chars): {raw_text[:500]!r}")
+            try:
+                bill = self._parse_and_validate(raw_text)
+            except Exception as parse_err:
+                logger.error(f"Parse failed. Raw text: {raw_text[:1000]!r}")
+                return None, f"Failed to parse Gemini response: {parse_err}"
             return bill, None
 
         except httpx.HTTPStatusError as e:
