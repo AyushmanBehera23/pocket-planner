@@ -73,36 +73,36 @@ const catColor = (c) => CATEGORY_PALETTE[c] || "#64748b";
 // ─────────────────────────────────────────────────────────────────────────────
 // LOCAL STORAGE & DEMO FALLBACK  (For GitHub Pages / Offline mode)
 // ─────────────────────────────────────────────────────────────────────────────
-const LOCAL_STORAGE_KEY = "pocket_planner_demo_expenses";
+const LOCAL_STORAGE_KEY = "pocket_planner_demo_expenses_v2";
 const DEFAULT_DEMO_EXPENSES = [
   {
     id: "demo-1",
     bill: {
-      vendor: "Trader Joe's",
+      vendor: "Blinkit",
       date: "2024-01-12",
       category: "Groceries",
-      total: 18.46,
+      total: 764.00,
       items: [
-        { name: "Mandarin Chicken", price: 4.99 },
-        { name: "Everything Bagels", price: 3.49 },
-        { name: "Cold Brew Coffee", price: 6.99 },
-        { name: "Cheese Crisps", price: 2.99 }
+        { name: "Amul Taaza Milk 1L", price: 54.00 },
+        { name: "Atta Whole Wheat 5kg", price: 265.00 },
+        { name: "Tata Tea Gold 500g", price: 280.00 },
+        { name: "Fortune Sunflower Oil 1L", price: 165.00 }
       ]
     },
     created_at: new Date().toISOString(),
-    file_name: "receipt_traderjoes.jpg",
+    file_name: "blinkit_receipt.jpg",
     file_size: 450000
   },
   {
     id: "demo-2",
     bill: {
-      vendor: "Uber",
+      vendor: "Uber India",
       date: "2024-01-14",
       category: "Transportation",
-      total: 39.20,
+      total: 340.00,
       items: [
-        { name: "Trip to Airport", price: 34.20 },
-        { name: "Tip", price: 5.00 }
+        { name: "Uber Go Ride to Office", price: 290.00 },
+        { name: "Toll & Parking", price: 50.00 }
       ]
     },
     created_at: new Date().toISOString(),
@@ -112,19 +112,18 @@ const DEFAULT_DEMO_EXPENSES = [
   {
     id: "demo-3",
     bill: {
-      vendor: "Whole Foods Market",
+      vendor: "Swiggy",
       date: "2024-02-03",
-      category: "Groceries",
-      total: 21.26,
+      category: "Food & Dining",
+      total: 570.00,
       items: [
-        { name: "Organic Almond Milk", price: 4.99 },
-        { name: "Sourdough Loaf", price: 6.29 },
-        { name: "Baby Spinach 5oz", price: 4.49 },
-        { name: "Hass Avocados", price: 5.49 }
+        { name: "Paneer Butter Masala", price: 280.00 },
+        { name: "Butter Naan (3 pcs)", price: 150.00 },
+        { name: "Jeera Rice", price: 140.00 }
       ]
     },
     created_at: new Date().toISOString(),
-    file_name: "wholefoods_feb.png",
+    file_name: "swiggy_dinner.png",
     file_size: 890000
   }
 ];
@@ -206,7 +205,7 @@ const api = {
         ? cleanName.charAt(0).toUpperCase() + cleanName.slice(1) 
         : "Corner Store & Cafe";
       
-      const simulatedTotal = Math.round((12.50 + (file.size % 45)) * 100) / 100;
+      const simulatedTotal = Math.round((280.00 + (file.size % 950)) * 100) / 100;
       const newRecord = {
         id: "rec-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
         bill: {
@@ -215,8 +214,8 @@ const api = {
           category: CATEGORIES[file.size % CATEGORIES.length] || "Groceries",
           total: simulatedTotal,
           items: [
-            { name: "Extracted Item A", price: Math.round((simulatedTotal * 0.6) * 100) / 100 },
-            { name: "Extracted Item B", price: Math.round((simulatedTotal * 0.4) * 100) / 100 }
+            { name: "Item 1", price: Math.round((simulatedTotal * 0.6) * 100) / 100 },
+            { name: "Item 2", price: Math.round((simulatedTotal * 0.4) * 100) / 100 }
           ]
         },
         created_at: new Date().toISOString(),
@@ -1032,7 +1031,7 @@ function CategoryBreakdown({ summary, loading }) {
         {cats.map(([cat, amt]) => (
           <div
             key={cat}
-            title={`${cat}: $${amt.toFixed(2)}`}
+            title={`${cat}: ₹${amt.toFixed(2)}`}
             style={{
               width: `${(amt / total) * 100}%`,
               background: catColor(cat), borderRadius: 2,
@@ -1053,7 +1052,7 @@ function CategoryBreakdown({ summary, loading }) {
               </div>
               <div style={{ color: T.text2, fontSize: 10, fontFamily: T.mono, width: 28, textAlign: "right" }}>{pct}%</div>
               <Mono style={{ color: T.text0, fontSize: 12, fontWeight: 700, width: 68, textAlign: "right" }}>
-                ${amt.toFixed(2)}
+                ₹{amt.toFixed(2)}
               </Mono>
             </div>
           );
@@ -1103,7 +1102,7 @@ function MonthlyChart({ summary, loading }) {
           return (
             <div
               key={month}
-              title={`${month}: $${amt.toFixed(2)}`}
+              title={`${month}: ₹${amt.toFixed(2)}`}
               style={{
                 display: "flex", flexDirection: "column",
                 alignItems: "center", gap: 4,
@@ -1111,7 +1110,7 @@ function MonthlyChart({ summary, loading }) {
               }}
             >
               <div style={{ color: T.text2, fontSize: 9, fontFamily: T.mono, marginBottom: 2 }}>
-                ${amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : amt.toFixed(0)}
+                ₹{amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : amt.toFixed(0)}
               </div>
               <div style={{
                 width: barW - 6, height: h + "%",
@@ -1181,7 +1180,7 @@ function BudgetAlerts({ summary }) {
                 {over ? "Budget exceeded:" : "Budget warning:"} {cat}
               </div>
               <div style={{ color: T.text2, fontSize: 11 }}>
-                ${spent.toFixed(2)} / ${limit.toFixed(2)} — {pct.toFixed(0)}% used
+                ₹{spent.toFixed(2)} / ₹{limit.toFixed(2)} — {pct.toFixed(0)}% used
               </div>
               <div style={{ height: 3, background: T.bg3, borderRadius: 2, marginTop: 6 }}>
                 <div style={{
@@ -1253,7 +1252,7 @@ function RecentFeed({ expenses, loading, onViewAll }) {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <Mono style={{ color: T.text0, fontSize: 13, fontWeight: 700 }}>${e.bill.total.toFixed(2)}</Mono>
+              <Mono style={{ color: T.text0, fontSize: 13, fontWeight: 700 }}>₹{e.bill.total.toFixed(2)}</Mono>
               <div style={{ marginTop: 3 }}>
                 <Badge label={e.bill.category} color={catColor(e.bill.category)} />
               </div>
@@ -1291,10 +1290,10 @@ function Dashboard({ setTab }) {
 
       {/* KPI row */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <StatCard label="Total Spend"   value={`$${total.toFixed(2)}`}      sub="All time"            icon="💸" accent={T.accent}  loading={loading} />
+        <StatCard label="Total Spend"   value={`₹${total.toFixed(2)}`}      sub="All time"            icon="💸" accent={T.accent}  loading={loading} />
         <StatCard label="Bills Tracked" value={count}                         sub="Documents scanned"  icon="🧾" accent={T.accentP} loading={loading} />
-        <StatCard label="Top Category"  value={topCat?.[0] || "—"}           sub={topCat ? `$${topCat[1].toFixed(2)}` : "no data"} icon="📊" accent={T.accentO} loading={loading} />
-        <StatCard label="Avg per Bill"  value={`$${avg.toFixed(2)}`}         sub="Per transaction"    icon="📐" accent={T.accentG} loading={loading} />
+        <StatCard label="Top Category"  value={topCat?.[0] || "—"}           sub={topCat ? `₹${topCat[1].toFixed(2)}` : "no data"} icon="📊" accent={T.accentO} loading={loading} />
+        <StatCard label="Avg per Bill"  value={`₹${avg.toFixed(2)}`}         sub="Per transaction"    icon="📐" accent={T.accentG} loading={loading} />
       </div>
 
       {/* Charts row */}
@@ -1334,7 +1333,7 @@ function ExtractionResult({ record, onClear, onUploadAnother }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
         {[
           { label: "Vendor", value: b.vendor, color: T.text0, bold: true },
-          { label: "Total",  value: `$${b.total.toFixed(2)}`, color: T.accentG, bold: true, mono: true },
+          { label: "Total",  value: `₹${b.total.toFixed(2)}`, color: T.accentG, bold: true, mono: true },
           { label: "Date",   value: b.date, color: T.text1, mono: true },
           { label: "Items",  value: `${b.items.length} line items`, color: T.text1 },
         ].map(({ label, value, color, bold, mono }) => (
@@ -1360,12 +1359,12 @@ function ExtractionResult({ record, onClear, onUploadAnother }) {
             borderBottom: i < b.items.length - 1 ? `1px solid ${T.border}` : "none",
           }}>
             <span style={{ color: T.text1, fontSize: 12 }}>{item.name}</span>
-            <Mono style={{ color: T.text2, fontSize: 12 }}>${item.price.toFixed(2)}</Mono>
+            <Mono style={{ color: T.text2, fontSize: 12 }}>₹{item.price.toFixed(2)}</Mono>
           </div>
         ))}
         <div style={{ padding: "8px 12px", display: "flex", justifyContent: "space-between", borderTop: `1px solid ${T.border}`, background: T.bg2 }}>
           <span style={{ color: T.text2, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Total</span>
-          <Mono style={{ color: T.accentG, fontSize: 13, fontWeight: 800 }}>${b.total.toFixed(2)}</Mono>
+          <Mono style={{ color: T.accentG, fontSize: 13, fontWeight: 800 }}>₹{b.total.toFixed(2)}</Mono>
         </div>
       </div>
 
@@ -1566,7 +1565,7 @@ function BatchUploadQueue({ queue, onRemove }) {
             </div>
             <div style={{ color: T.text2, fontSize: 10, fontFamily: T.mono }}>
               {(item.file.size / 1024).toFixed(0)} KB
-              {item.status === "done" && item.result && ` • ${item.result.bill.vendor} — $${item.result.bill.total.toFixed(2)}`}
+              {item.status === "done" && item.result && ` • ${item.result.bill.vendor} — ₹${item.result.bill.total.toFixed(2)}`}
               {item.status === "error" && ` • ${item.error}`}
             </div>
           </div>
@@ -1598,7 +1597,7 @@ function UploadView({ setTab }) {
   const handleSingleExtracted = (rec) => {
     addExpense(rec);
     setLastResult(rec);
-    toast(`✓ ${rec.bill.vendor} — $${rec.bill.total.toFixed(2)} added to ledger!`, "success");
+    toast(`✓ ${rec.bill.vendor} — ₹${rec.bill.total.toFixed(2)} added to ledger!`, "success");
   };
 
   const handleUploadAnother = () => {
@@ -1822,7 +1821,7 @@ function EditExpenseModal({ expense, open, onClose }) {
             </select>
           </div>
           <div>
-            <Label style={{ marginBottom: 6 }}>Total ($)</Label>
+            <Label style={{ marginBottom: 6 }}>Total (₹)</Label>
             <input type="number" step="0.01" style={inputStyle} value={form.total} onChange={e => setField("total", e.target.value)} />
           </div>
         </div>
@@ -1935,7 +1934,7 @@ function LedgerView() {
       e.bill.date,
       e.bill.category,
       e.bill.total.toFixed(2),
-      `"${e.bill.items.map(i => `${i.name}:$${i.price}`).join("; ")}"`,
+      `"${e.bill.items.map(i => `${i.name}:₹${i.price}`).join("; ")}"`,
       e.file_name || "",
     ]);
     const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
@@ -2082,7 +2081,7 @@ function LedgerView() {
                     </div>
                     <Mono style={{ color: T.text2, fontSize: 11 }}>{expense.bill.date}</Mono>
                     <div><Badge label={expense.bill.category} color={catColor(expense.bill.category)} /></div>
-                    <Mono style={{ color: T.text0, fontSize: 14, fontWeight: 800 }}>${expense.bill.total.toFixed(2)}</Mono>
+                    <Mono style={{ color: T.text0, fontSize: 14, fontWeight: 800 }}>₹{expense.bill.total.toFixed(2)}</Mono>
 
                     {/* Actions */}
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }} onClick={e => e.stopPropagation()}>
@@ -2137,12 +2136,12 @@ function LedgerView() {
                           borderBottom: i < expense.bill.items.length - 1 ? `1px solid ${T.border}` : "none",
                         }}>
                           <span style={{ color: T.text1, fontSize: 12 }}>{item.name}</span>
-                          <Mono style={{ color: T.text2, fontSize: 12 }}>${item.price.toFixed(2)}</Mono>
+                          <Mono style={{ color: T.text2, fontSize: 12 }}>₹{item.price.toFixed(2)}</Mono>
                         </div>
                       ))}
                       <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0 0", marginTop: 6, borderTop: `1px solid ${T.border}` }}>
                         <span style={{ color: T.text2, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Total</span>
-                        <Mono style={{ color: T.accentG, fontSize: 14, fontWeight: 800 }}>${expense.bill.total.toFixed(2)}</Mono>
+                        <Mono style={{ color: T.accentG, fontSize: 14, fontWeight: 800 }}>₹{expense.bill.total.toFixed(2)}</Mono>
                       </div>
                     </div>
                   )}
@@ -2163,7 +2162,7 @@ function LedgerView() {
               <span style={{ color: T.text2, fontSize: 11 }}>{filtered.length} transactions ·</span>
               <span style={{ color: T.text2, fontSize: 11 }}>Total:</span>
               <Mono style={{ color: T.text0, fontSize: 13, fontWeight: 800 }}>
-                ${filtered.reduce((s, e) => s + e.bill.total, 0).toFixed(2)}
+                ₹{filtered.reduce((s, e) => s + e.bill.total, 0).toFixed(2)}
               </Mono>
             </div>
 
@@ -2275,7 +2274,7 @@ function ManualEntryView() {
             const data = await r.json();
             if (data.success && data.data) {
               addExpense(data.data);
-              toast(`✓ ${form.vendor} — $${parseFloat(form.total).toFixed(2)} added to ledger!`, "success");
+              toast(`✓ ${form.vendor} — ₹${parseFloat(form.total).toFixed(2)} added to ledger!`, "success");
               setForm({ vendor: "", date: today, category: "Other", total: "", items: [{ name: "", price: "" }] });
               setSaving(false);
               return;
@@ -2349,7 +2348,7 @@ function ManualEntryView() {
                   onChange={e => setItem(i, "name", e.target.value)}
                 />
                 <div style={{ position: "relative", flexShrink: 0, width: 100 }}>
-                  <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: T.text2, fontSize: 12 }}>$</span>
+                  <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: T.text2, fontSize: 12 }}>₹</span>
                   <input
                     type="number" step="0.01" min="0"
                     style={{ ...inputStyle, width: "100%", paddingLeft: 22 }}
@@ -2372,7 +2371,7 @@ function ManualEntryView() {
             {parseFloat(computedTotal) > 0 && (
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <span style={{ color: T.text2, fontSize: 11 }}>Items sum:</span>
-                <Mono style={{ color: T.accentO, fontSize: 13, fontWeight: 700 }}>${computedTotal}</Mono>
+                <Mono style={{ color: T.accentO, fontSize: 13, fontWeight: 700 }}>₹{computedTotal}</Mono>
                 <button
                   type="button"
                   onClick={() => setField("total", computedTotal)}
@@ -2386,7 +2385,7 @@ function ManualEntryView() {
           <div style={{ marginBottom: 24 }}>
             <Label style={{ marginBottom: 6 }}>Total Amount *</Label>
             <div style={{ position: "relative" }}>
-              <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: T.text1, fontSize: 16, fontWeight: 700 }}>$</span>
+              <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: T.text1, fontSize: 16, fontWeight: 700 }}>₹</span>
               <input
                 type="number" step="0.01" min="0"
                 style={{ ...inputStyle, paddingLeft: 28, fontSize: 18, fontWeight: 700 }}
@@ -2457,7 +2456,7 @@ function BudgetsView() {
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                     <span style={{ color: T.text0, fontSize: 13, fontWeight: 600 }}>{cat}</span>
                     <span style={{ color: T.text2, fontSize: 11, fontFamily: T.mono }}>
-                      ${spent.toFixed(2)} spent
+                      ₹{spent.toFixed(2)} spent
                       {limit > 0 && <> · <span style={{ color: danger ? T.accentR : T.text2 }}>{pct.toFixed(0)}%</span></>}
                     </span>
                   </div>
@@ -2468,7 +2467,7 @@ function BudgetsView() {
                   )}
                 </div>
                 <div style={{ position: "relative", flexShrink: 0, width: 120 }}>
-                  <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: T.text2, fontSize: 12 }}>$</span>
+                  <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: T.text2, fontSize: 12 }}>₹</span>
                   <input
                     type="number" min="0" step="1"
                     placeholder="No limit"

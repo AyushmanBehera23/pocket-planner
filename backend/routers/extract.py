@@ -87,5 +87,5 @@ async def extract_bill(
         file_size=len(file_bytes),
     )
 
-    logger.info(f"Saved: {bill.vendor} | ${bill.total} | {bill.category}")
+    logger.info(f"Saved: {bill.vendor} | ₹{bill.total} | {bill.category}")
     return ExtractionResponse(success=True, data=record)

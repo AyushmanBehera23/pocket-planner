@@ -55,7 +55,7 @@ Required JSON schema:
 Extraction rules:
 - Extract EVERY individual line item visible on the bill
 - All prices must be positive floating-point numbers with 2 decimal places
-- total and price MUST represent the converted value in Indian Rupees (INR). If the bill is already in INR, original_price = price and exchange_rate = 1.0. If the bill is in a foreign currency, estimate the exchange_rate to INR, and calculate the INR total as original_total * exchange_rate.
+- total and price MUST represent the value in Indian Rupees (INR, ₹). If the bill is already in INR (₹), extract the values as shown, set original_price = price, original_currency = "INR", and exchange_rate = 1.0. If the bill is in a foreign currency (e.g. USD, EUR), convert total and line prices to INR, estimate the exchange_rate to INR, and set original_total / original_currency accordingly.
 - If date is unclear or missing, use today's date as YYYY-MM-DD
 - If vendor name is unclear, use the most prominent text on the bill
 - category must match one of the listed options EXACTLY (case-sensitive)
@@ -229,59 +229,72 @@ class MockGeminiService:
 
     _MOCK_BILLS = [
         {
-            "vendor": "Whole Foods Market",
+            "vendor": "Blinkit",
             "date": "2025-03-10",
             "items": [
-                {"name": "Organic Almond Milk 64oz", "price": 4.99},
-                {"name": "Hass Avocados 4-Pack", "price": 5.49},
-                {"name": "Country Sourdough Loaf", "price": 6.29},
-                {"name": "Fage Greek Yogurt 32oz", "price": 7.99},
-                {"name": "Baby Arugula 5oz", "price": 4.49},
+                {"name": "Amul Taaza Toned Milk 1L", "price": 54.00, "original_price": 54.00},
+                {"name": "Hass Avocados (Pack of 2)", "price": 230.00, "original_price": 230.00},
+                {"name": "Aashirvaad Atta 5kg", "price": 275.00, "original_price": 275.00},
+                {"name": "Epigamia Greek Yogurt 90g", "price": 95.00, "original_price": 95.00},
             ],
-            "total": 29.25,
+            "total": 654.00,
             "category": "Groceries",
+            "original_total": 654.00,
+            "original_currency": "INR",
+            "exchange_rate": 1.0,
         },
         {
-            "vendor": "Chipotle Mexican Grill",
+            "vendor": "Swiggy",
             "date": "2025-03-11",
             "items": [
-                {"name": "Burrito Bowl — Chicken", "price": 12.50},
-                {"name": "Chips & Fresh Guacamole", "price": 4.85},
-                {"name": "Fountain Beverage Large", "price": 3.10},
+                {"name": "Chicken Dum Biryani (Regular)", "price": 360.00, "original_price": 360.00},
+                {"name": "Garlic Naan (2 pcs)", "price": 110.00, "original_price": 110.00},
+                {"name": "Gulab Jamun (2 pcs)", "price": 80.00, "original_price": 80.00},
             ],
-            "total": 20.45,
+            "total": 550.00,
             "category": "Food & Dining",
+            "original_total": 550.00,
+            "original_currency": "INR",
+            "exchange_rate": 1.0,
         },
         {
-            "vendor": "Shell Gas Station",
+            "vendor": "Indian Oil Fuel Station",
             "date": "2025-03-12",
             "items": [
-                {"name": "Premium Unleaded 87 — 11.2 gal", "price": 45.76},
-                {"name": "Monster Energy Drink 16oz", "price": 3.99},
+                {"name": "Petrol ExtraPremium — 16.5 L", "price": 1750.00, "original_price": 1750.00},
             ],
-            "total": 49.75,
+            "total": 1750.00,
             "category": "Transportation",
+            "original_total": 1750.00,
+            "original_currency": "INR",
+            "exchange_rate": 1.0,
         },
         {
-            "vendor": "CVS Pharmacy",
+            "vendor": "Apollo Pharmacy",
             "date": "2025-03-09",
             "items": [
-                {"name": "Advil Ibuprofen 200ct", "price": 14.99},
-                {"name": "Vitamin D3 2000IU", "price": 9.99},
-                {"name": "Bandage Variety Pack", "price": 5.49},
+                {"name": "Dolo 650mg Tablets (15 pcs)", "price": 35.00, "original_price": 35.00},
+                {"name": "Limcee Vitamin C 500mg", "price": 105.00, "original_price": 105.00},
+                {"name": "Hansaplast Bandages (Pack of 10)", "price": 50.00, "original_price": 50.00},
             ],
-            "total": 30.47,
+            "total": 190.00,
             "category": "Healthcare",
+            "original_total": 190.00,
+            "original_currency": "INR",
+            "exchange_rate": 1.0,
         },
         {
-            "vendor": "Amazon",
+            "vendor": "Amazon India",
             "date": "2025-03-14",
             "items": [
-                {"name": "USB-C Hub 7-in-1", "price": 29.99},
-                {"name": "Laptop Stand Adjustable", "price": 39.99},
+                {"name": "65W USB-C GaN Fast Charger", "price": 1499.00, "original_price": 1499.00},
+                {"name": "Aluminium Laptop Stand", "price": 799.00, "original_price": 799.00},
             ],
-            "total": 69.98,
+            "total": 2298.00,
             "category": "Shopping",
+            "original_total": 2298.00,
+            "original_currency": "INR",
+            "exchange_rate": 1.0,
         },
     ]
 
