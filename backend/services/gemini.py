@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_API_URL = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/"
+    f"https://generativelanguage.googleapis.com/v1alpha/models/"
     f"{GEMINI_MODEL}:generateContent"
 )
 
@@ -91,7 +91,7 @@ class GeminiService:
     @property
     def client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=60.0)
+            self._client = httpx.AsyncClient(timeout=120.0)
         return self._client
 
     async def extract_bill(
@@ -132,7 +132,9 @@ class GeminiService:
                 "topK": 1,
                 "topP": 0.95,
                 "maxOutputTokens": 4096,
-                "response_mime_type": "application/json",
+                "thinkingConfig": {
+                    "thinkingBudget": 0
+                },
             },
         }
 
@@ -145,12 +147,19 @@ class GeminiService:
             response.raise_for_status()
             result = response.json()
 
-            raw_text = (
+            # Thinking models may return multiple parts (thought + answer).
+            # We want the last text part which is the actual answer.
+            parts = (
                 result.get("candidates", [{}])[0]
                 .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "")
+                .get("parts", [])
             )
+            raw_text = ""
+            for part in parts:
+                if "text" in part and not part.get("thought", False):
+                    raw_text = part["text"]
+            if not raw_text and parts:
+                raw_text = parts[-1].get("text", "")
 
             if not raw_text:
                 logger.error(f"Gemini empty response. Full result: {result}")
